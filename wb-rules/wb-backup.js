@@ -33,22 +33,32 @@ function profileStatus(state, profile) {
   return "Ожидание";
 }
 
-function readableWeekday(value) {
-  var days = ["", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
-  return days[Number(value)] || "Воскресенье";
+function backupFrequencyEnum() {
+  return {
+    daily: backupTitle("Ежедневно", "Daily"),
+    weekly: backupTitle("Еженедельно", "Weekly"),
+    monthly: backupTitle("Ежемесячно", "Monthly")
+  };
 }
 
-function readableFrequency(value) {
-  if (value === "weekly") return "Еженедельно";
-  if (value === "monthly") return "Ежемесячно";
-  return "Ежедневно";
+function backupWeekdayEnum() {
+  return {
+    1: backupTitle("Понедельник", "Monday"),
+    2: backupTitle("Вторник", "Tuesday"),
+    3: backupTitle("Среда", "Wednesday"),
+    4: backupTitle("Четверг", "Thursday"),
+    5: backupTitle("Пятница", "Friday"),
+    6: backupTitle("Суббота", "Saturday"),
+    7: backupTitle("Воскресенье", "Sunday")
+  };
 }
 
-function readableScheduleDay(state, profile) {
-  var frequency = state[profile + "_frequency"];
-  if (frequency === "weekly") return readableWeekday(state[profile + "_weekday"]);
-  if (frequency === "monthly") return String(state[profile + "_monthday"] || 1);
-  return "Не требуется";
+function backupMonthdayEnum() {
+  var result = {};
+  for (var day = 1; day <= 28; day += 1) {
+    result[String(day)] = backupTitle(String(day), String(day));
+  }
+  return result;
 }
 
 defineVirtualDevice("wb_backup_config", {
@@ -60,8 +70,9 @@ defineVirtualDevice("wb_backup_config", {
     last_result: {type: "text", value: "—", readonly: true, title: backupTitle("Результат", "Result")},
     run: {type: "pushbutton", title: backupTitle("Запустить сейчас", "Run now")},
     enabled: {type: "switch", value: true, title: backupTitle("Запуск по расписанию", "Scheduled backup")},
-    frequency: {type: "text", value: "Ежедневно", readonly: false, title: backupTitle("Периодичность", "Frequency")},
-    day: {type: "text", value: "Не требуется", readonly: false, title: backupTitle("День запуска", "Run day")},
+    frequency: {type: "text", value: "daily", readonly: false, enum: backupFrequencyEnum(), title: backupTitle("Периодичность", "Frequency")},
+    weekday: {type: "text", value: "1", readonly: false, enum: backupWeekdayEnum(), title: backupTitle("День недели", "Weekday")},
+    monthday: {type: "text", value: "1", readonly: false, enum: backupMonthdayEnum(), title: backupTitle("Число месяца", "Month day")},
     schedule: {type: "text", value: "03:30", readonly: false, title: backupTitle("Время запуска (ЧЧ:ММ)", "Start time (HH:MM)")},
     keep_count: {type: "text", value: "14", readonly: false, title: backupTitle("Хранить копий", "Copies to keep")}
   }
@@ -76,8 +87,9 @@ defineVirtualDevice("wb_backup_full", {
     last_result: {type: "text", value: "—", readonly: true, title: backupTitle("Результат", "Result")},
     run: {type: "pushbutton", title: backupTitle("Запустить сейчас", "Run now")},
     enabled: {type: "switch", value: true, title: backupTitle("Запуск по расписанию", "Scheduled backup")},
-    frequency: {type: "text", value: "Еженедельно", readonly: false, title: backupTitle("Периодичность", "Frequency")},
-    day: {type: "text", value: "Воскресенье", readonly: false, title: backupTitle("День запуска", "Run day")},
+    frequency: {type: "text", value: "weekly", readonly: false, enum: backupFrequencyEnum(), title: backupTitle("Периодичность", "Frequency")},
+    weekday: {type: "text", value: "7", readonly: false, enum: backupWeekdayEnum(), title: backupTitle("День недели", "Weekday")},
+    monthday: {type: "text", value: "1", readonly: false, enum: backupMonthdayEnum(), title: backupTitle("Число месяца", "Month day")},
     schedule: {type: "text", value: "04:30", readonly: false, title: backupTitle("Время запуска (ЧЧ:ММ)", "Start time (HH:MM)")},
     keep_count: {type: "text", value: "4", readonly: false, title: backupTitle("Хранить копий", "Copies to keep")}
   }
@@ -94,8 +106,9 @@ trackMqtt("/wirenboard/backup/state", function(message) {
     dev["wb_backup_config/last_file"] = state.last_config_file || "—";
     dev["wb_backup_config/last_result"] = readableResult(state.last_config_result);
     dev["wb_backup_config/enabled"] = Boolean(state.config_enabled);
-    dev["wb_backup_config/frequency"] = readableFrequency(state.config_frequency);
-    dev["wb_backup_config/day"] = readableScheduleDay(state, "config");
+    dev["wb_backup_config/frequency"] = state.config_frequency || "daily";
+    dev["wb_backup_config/weekday"] = String(state.config_weekday || 1);
+    dev["wb_backup_config/monthday"] = String(state.config_monthday || 1);
     dev["wb_backup_config/schedule"] = padBackupNumber(Number(state.config_hour)) + ":" + padBackupNumber(Number(state.config_minute));
     dev["wb_backup_config/keep_count"] = String(state.config_keep_count);
 
@@ -104,8 +117,9 @@ trackMqtt("/wirenboard/backup/state", function(message) {
     dev["wb_backup_full/last_file"] = state.last_full_file || "—";
     dev["wb_backup_full/last_result"] = readableResult(state.last_full_result);
     dev["wb_backup_full/enabled"] = Boolean(state.full_enabled);
-    dev["wb_backup_full/frequency"] = readableFrequency(state.full_frequency);
-    dev["wb_backup_full/day"] = readableScheduleDay(state, "full");
+    dev["wb_backup_full/frequency"] = state.full_frequency || "weekly";
+    dev["wb_backup_full/weekday"] = String(state.full_weekday || 7);
+    dev["wb_backup_full/monthday"] = String(state.full_monthday || 1);
     dev["wb_backup_full/schedule"] = padBackupNumber(Number(state.full_hour)) + ":" + padBackupNumber(Number(state.full_minute));
     dev["wb_backup_full/keep_count"] = String(state.full_keep_count);
     updatingBackupDevices = false;
@@ -142,11 +156,13 @@ defineRule("wb_backup_full_run", {
 
 backupRule("wb_backup_config_enabled", "wb_backup_config/enabled", "config_enabled");
 backupRule("wb_backup_config_frequency", "wb_backup_config/frequency", "config_frequency");
-backupRule("wb_backup_config_day", "wb_backup_config/day", "config_day");
+backupRule("wb_backup_config_weekday", "wb_backup_config/weekday", "config_weekday");
+backupRule("wb_backup_config_monthday", "wb_backup_config/monthday", "config_monthday");
 backupRule("wb_backup_config_schedule", "wb_backup_config/schedule", "config_schedule");
 backupRule("wb_backup_config_keep", "wb_backup_config/keep_count", "config_keep_count");
 backupRule("wb_backup_full_enabled", "wb_backup_full/enabled", "full_enabled");
 backupRule("wb_backup_full_frequency", "wb_backup_full/frequency", "full_frequency");
-backupRule("wb_backup_full_day", "wb_backup_full/day", "full_day");
+backupRule("wb_backup_full_weekday", "wb_backup_full/weekday", "full_weekday");
+backupRule("wb_backup_full_monthday", "wb_backup_full/monthday", "full_monthday");
 backupRule("wb_backup_full_schedule", "wb_backup_full/schedule", "full_schedule");
 backupRule("wb_backup_full_keep", "wb_backup_full/keep_count", "full_keep_count");

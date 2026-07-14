@@ -116,7 +116,8 @@ def handle(cfg, topic, payload):
         if profile not in ("config", "full") or not separator:
             raise ValueError("unknown setting")
         limits = {"keep_count": (1, 365 if profile == "config" else 52),
-                  "weekday": (1, 7), "hour": (0, 23), "minute": (0, 59)}
+                  "weekday": (1, 7), "monthday": (1, 28),
+                  "hour": (0, 23), "minute": (0, 59)}
         if key not in limits:
             raise ValueError("unknown setting")
         low, high = limits[key]
