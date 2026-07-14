@@ -15,12 +15,19 @@ case "${1:-status}" in
   apply)
     python3 /opt/wirenboard-backup/lib/write-timers.py
     systemctl daemon-reload
-    enabled="$(python3 -c 'import json; print("yes" if json.load(open("/etc/wb-backup/config.json")).get("enabled", True) else "no")')"
-    if [ "$enabled" = yes ]; then
-      systemctl enable --now wb-backup-config.timer wb-backup-full.timer
-      systemctl restart wb-backup-config.timer wb-backup-full.timer
+    config_enabled="$(python3 -c 'import json; print("yes" if json.load(open("/etc/wb-backup/config.json"))["config_backup"].get("enabled", True) else "no")')"
+    full_enabled="$(python3 -c 'import json; print("yes" if json.load(open("/etc/wb-backup/config.json"))["full_backup"].get("enabled", True) else "no")')"
+    if [ "$config_enabled" = yes ]; then
+      systemctl enable --now wb-backup-config.timer
+      systemctl restart wb-backup-config.timer
     else
-      systemctl disable --now wb-backup-config.timer wb-backup-full.timer
+      systemctl disable --now wb-backup-config.timer
+    fi
+    if [ "$full_enabled" = yes ]; then
+      systemctl enable --now wb-backup-full.timer
+      systemctl restart wb-backup-full.timer
+    else
+      systemctl disable --now wb-backup-full.timer
     fi
     /opt/wirenboard-backup/bin/wb-backup publish || true
     ;;

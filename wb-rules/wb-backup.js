@@ -1,16 +1,20 @@
-// Wiren Board Backup virtual device.
+// Wiren Board Backup virtual devices.
 
 function backupTitle(ru, en) {
   return {ru: ru, en: en};
+}
+
+function padBackupNumber(number) {
+  return number < 10 ? "0" + number : String(number);
 }
 
 function readableTime(value) {
   if (!value || value === "unknown") return "—";
   var date = new Date(value);
   if (isNaN(date.getTime())) return value;
-  function pad(number) { return number < 10 ? "0" + number : String(number); }
-  return pad(date.getDate()) + "." + pad(date.getMonth() + 1) + "." + date.getFullYear() +
-    " " + pad(date.getHours()) + ":" + pad(date.getMinutes()) + ":" + pad(date.getSeconds());
+  return padBackupNumber(date.getDate()) + "." + padBackupNumber(date.getMonth() + 1) +
+    "." + date.getFullYear() + " " + padBackupNumber(date.getHours()) + ":" +
+    padBackupNumber(date.getMinutes()) + ":" + padBackupNumber(date.getSeconds());
 }
 
 function readableResult(value) {
@@ -20,103 +24,107 @@ function readableResult(value) {
   return "—";
 }
 
-function readableStatus(state) {
-  var profile = state.running_profile === "full" ? "полный архив" : "конфигурации";
-  if (state.status === "running") return "Выполняется: " + profile;
-  if (state.status === "error") {
-    var failed = state.last_profile === "full" ? "полный архив" : "конфигурации";
-    return "Ошибка: " + failed + (state.error ? " — " + state.error : "");
+function profileStatus(state, profile) {
+  if (state.status === "running" && state.running_profile === profile) return "Выполняется";
+  if (state.status === "error" && state.last_profile === profile) {
+    return "Ошибка" + (state.error ? ": " + state.error : "");
   }
-  if (state.status === "success") return "Готово";
+  if (state["last_" + profile + "_result"] === "success") return "Готово";
   return "Ожидание";
 }
 
-defineVirtualDevice("wb_backup", {
-  title: "Резервное копирование",
+function readableWeekday(value) {
+  var days = ["", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"];
+  return days[Number(value)] || "Воскресенье";
+}
+
+defineVirtualDevice("wb_backup_config", {
+  title: "Бэкап конфигураций",
   cells: {
     status: {type: "text", value: "Ожидание", readonly: true, title: backupTitle("Статус", "Status")},
-    config_time: {type: "text", value: "—", readonly: true, title: backupTitle("Конфигурации: время", "Configuration: time")},
-    config_file: {type: "text", value: "—", readonly: true, title: backupTitle("Конфигурации: файл", "Configuration: file")},
-    config_result: {type: "text", value: "—", readonly: true, title: backupTitle("Конфигурации: результат", "Configuration: result")},
-    run_config: {type: "pushbutton", title: backupTitle("Запустить бэкап конфигураций", "Run configuration backup")},
-    full_time: {type: "text", value: "—", readonly: true, title: backupTitle("Полный: время", "Full: time")},
-    full_file: {type: "text", value: "—", readonly: true, title: backupTitle("Полный: файл", "Full: file")},
-    full_result: {type: "text", value: "—", readonly: true, title: backupTitle("Полный: результат", "Full: result")},
-    run_full: {type: "pushbutton", title: backupTitle("Запустить полный бэкап", "Run full backup")}
+    last_time: {type: "text", value: "—", readonly: true, title: backupTitle("Последний запуск", "Last run")},
+    last_file: {type: "text", value: "—", readonly: true, title: backupTitle("Последний файл", "Last file")},
+    last_result: {type: "text", value: "—", readonly: true, title: backupTitle("Результат", "Result")},
+    run: {type: "pushbutton", title: backupTitle("Запустить сейчас", "Run now")},
+    enabled: {type: "switch", value: true, title: backupTitle("Ежедневный запуск включён", "Daily schedule enabled")},
+    schedule: {type: "text", value: "03:30", readonly: false, title: backupTitle("Время запуска (ЧЧ:ММ)", "Start time (HH:MM)")},
+    keep_count: {type: "text", value: "14", readonly: false, title: backupTitle("Хранить копий", "Copies to keep")}
   }
 });
 
-defineVirtualDevice("wb_backup_settings", {
-  title: "Настройки резервного копирования",
+defineVirtualDevice("wb_backup_full", {
+  title: "Полный бэкап",
   cells: {
-    enabled: {type: "switch", value: true, title: backupTitle("Расписание включено", "Schedule enabled")},
-    config_hour: {type: "range", value: 3, min: 0, max: 23, title: backupTitle("Конфигурации: час", "Configuration: hour")},
-    config_minute: {type: "range", value: 30, min: 0, max: 59, title: backupTitle("Конфигурации: минута", "Configuration: minute")},
-    config_keep_count: {type: "range", value: 14, min: 1, max: 365, title: backupTitle("Конфигурации: хранить копий", "Configuration: copies to keep")},
-    full_weekday: {type: "range", value: 7, min: 1, max: 7, title: backupTitle("Полный: день недели (1=Пн, 7=Вс)", "Full: weekday (1=Mon, 7=Sun)")},
-    full_hour: {type: "range", value: 4, min: 0, max: 23, title: backupTitle("Полный: час", "Full: hour")},
-    full_minute: {type: "range", value: 30, min: 0, max: 59, title: backupTitle("Полный: минута", "Full: minute")},
-    full_keep_count: {type: "range", value: 4, min: 1, max: 52, title: backupTitle("Полный: хранить копий", "Full: copies to keep")}
+    status: {type: "text", value: "Ожидание", readonly: true, title: backupTitle("Статус", "Status")},
+    last_time: {type: "text", value: "—", readonly: true, title: backupTitle("Последний запуск", "Last run")},
+    last_file: {type: "text", value: "—", readonly: true, title: backupTitle("Последний файл", "Last file")},
+    last_result: {type: "text", value: "—", readonly: true, title: backupTitle("Результат", "Result")},
+    run: {type: "pushbutton", title: backupTitle("Запустить сейчас", "Run now")},
+    enabled: {type: "switch", value: true, title: backupTitle("Еженедельный запуск включён", "Weekly schedule enabled")},
+    weekday: {type: "text", value: "Воскресенье", readonly: false, title: backupTitle("День недели", "Weekday")},
+    schedule: {type: "text", value: "04:30", readonly: false, title: backupTitle("Время запуска (ЧЧ:ММ)", "Start time (HH:MM)")},
+    keep_count: {type: "text", value: "4", readonly: false, title: backupTitle("Хранить копий", "Copies to keep")}
   }
 });
 
-var updatingBackupSettings = false;
+var updatingBackupDevices = false;
 
 trackMqtt("/wirenboard/backup/state", function(message) {
   try {
     var state = JSON.parse(message.value);
-    dev["wb_backup/status"] = readableStatus(state);
-    dev["wb_backup/config_time"] = readableTime(state.last_config);
-    dev["wb_backup/config_file"] = state.last_config_file || "—";
-    dev["wb_backup/config_result"] = readableResult(state.last_config_result || (state.last_profile === "config" ? state.last_result : ""));
-    dev["wb_backup/full_time"] = readableTime(state.last_full);
-    dev["wb_backup/full_file"] = state.last_full_file || "—";
-    dev["wb_backup/full_result"] = readableResult(state.last_full_result || (state.last_profile === "full" ? state.last_result : ""));
-    updatingBackupSettings = true;
-    dev["wb_backup_settings/enabled"] = Boolean(state.enabled);
-    dev["wb_backup_settings/config_hour"] = Number(state.config_hour);
-    dev["wb_backup_settings/config_minute"] = Number(state.config_minute);
-    dev["wb_backup_settings/config_keep_count"] = Number(state.config_keep_count);
-    dev["wb_backup_settings/full_weekday"] = Number(state.full_weekday);
-    dev["wb_backup_settings/full_hour"] = Number(state.full_hour);
-    dev["wb_backup_settings/full_minute"] = Number(state.full_minute);
-    dev["wb_backup_settings/full_keep_count"] = Number(state.full_keep_count);
-    updatingBackupSettings = false;
+    updatingBackupDevices = true;
+    dev["wb_backup_config/status"] = profileStatus(state, "config");
+    dev["wb_backup_config/last_time"] = readableTime(state.last_config);
+    dev["wb_backup_config/last_file"] = state.last_config_file || "—";
+    dev["wb_backup_config/last_result"] = readableResult(state.last_config_result);
+    dev["wb_backup_config/enabled"] = Boolean(state.config_enabled);
+    dev["wb_backup_config/schedule"] = padBackupNumber(Number(state.config_hour)) + ":" + padBackupNumber(Number(state.config_minute));
+    dev["wb_backup_config/keep_count"] = String(state.config_keep_count);
+
+    dev["wb_backup_full/status"] = profileStatus(state, "full");
+    dev["wb_backup_full/last_time"] = readableTime(state.last_full);
+    dev["wb_backup_full/last_file"] = state.last_full_file || "—";
+    dev["wb_backup_full/last_result"] = readableResult(state.last_full_result);
+    dev["wb_backup_full/enabled"] = Boolean(state.full_enabled);
+    dev["wb_backup_full/weekday"] = readableWeekday(state.full_weekday);
+    dev["wb_backup_full/schedule"] = padBackupNumber(Number(state.full_hour)) + ":" + padBackupNumber(Number(state.full_minute));
+    dev["wb_backup_full/keep_count"] = String(state.full_keep_count);
+    updatingBackupDevices = false;
   } catch (error) {
-    updatingBackupSettings = false;
-    dev["wb_backup/status"] = "Ошибка обработки состояния";
+    updatingBackupDevices = false;
+    dev["wb_backup_config/status"] = "Ошибка обработки состояния";
+    dev["wb_backup_full/status"] = "Ошибка обработки состояния";
     log.error("wb-backup: invalid state: " + error);
   }
 });
 
-function defineBackupSettingRule(control, command) {
-  defineRule("wb_backup_setting_" + control, {
-    whenChanged: "wb_backup_settings/" + control,
+function backupRule(name, control, command) {
+  defineRule(name, {
+    whenChanged: control,
     then: function(value) {
-      if (!updatingBackupSettings) publish("/wirenboard/backup/command/" + command, String(value));
+      if (!updatingBackupDevices) publish("/wirenboard/backup/command/" + command, String(value));
     }
   });
 }
 
-defineBackupSettingRule("enabled", "enabled");
-defineBackupSettingRule("config_hour", "config_hour");
-defineBackupSettingRule("config_minute", "config_minute");
-defineBackupSettingRule("config_keep_count", "config_keep_count");
-defineBackupSettingRule("full_weekday", "full_weekday");
-defineBackupSettingRule("full_hour", "full_hour");
-defineBackupSettingRule("full_minute", "full_minute");
-defineBackupSettingRule("full_keep_count", "full_keep_count");
-
-defineRule("wb_backup_run_config", {
-  whenChanged: "wb_backup/run_config",
+defineRule("wb_backup_config_run", {
+  whenChanged: "wb_backup_config/run",
   then: function(value) {
     if (value) publish("/wirenboard/backup/command/run_config", "run");
   }
 });
 
-defineRule("wb_backup_run_full", {
-  whenChanged: "wb_backup/run_full",
+defineRule("wb_backup_full_run", {
+  whenChanged: "wb_backup_full/run",
   then: function(value) {
     if (value) publish("/wirenboard/backup/command/run_full", "run");
   }
 });
+
+backupRule("wb_backup_config_enabled", "wb_backup_config/enabled", "config_enabled");
+backupRule("wb_backup_config_schedule", "wb_backup_config/schedule", "config_schedule");
+backupRule("wb_backup_config_keep", "wb_backup_config/keep_count", "config_keep_count");
+backupRule("wb_backup_full_enabled", "wb_backup_full/enabled", "full_enabled");
+backupRule("wb_backup_full_weekday", "wb_backup_full/weekday", "full_weekday");
+backupRule("wb_backup_full_schedule", "wb_backup_full/schedule", "full_schedule");
+backupRule("wb_backup_full_keep", "wb_backup_full/keep_count", "full_keep_count");

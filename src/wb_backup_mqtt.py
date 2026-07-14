@@ -8,7 +8,10 @@ CONFIG = pathlib.Path("/etc/wb-backup/config.json")
 
 
 def load():
-    return json.loads(CONFIG.read_text(encoding="utf-8"))
+    cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
+    cfg.setdefault("config_backup", {}).setdefault("enabled", True)
+    cfg.setdefault("full_backup", {}).setdefault("enabled", True)
+    return cfg
 
 
 def save(cfg):
@@ -52,8 +55,29 @@ def handle(cfg, topic, payload):
         profile = suffix.removeprefix("run_")
         subprocess.Popen(["systemctl", "start", f"wb-backup@{profile}.service"])
         return cfg
-    if suffix == "enabled":
-        cfg["enabled"] = payload.strip().upper() in ("ON", "1", "TRUE")
+    if suffix in ("config_enabled", "full_enabled"):
+        profile = suffix.split("_", 1)[0]
+        cfg[profile + "_backup"]["enabled"] = payload.strip().upper() in ("ON", "1", "TRUE")
+    elif suffix in ("config_schedule", "full_schedule"):
+        profile = suffix.split("_", 1)[0]
+        parts = payload.strip().split(":")
+        if len(parts) != 2:
+            raise ValueError("time must use HH:MM format")
+        hour, minute = (int(part) for part in parts)
+        if not 0 <= hour <= 23 or not 0 <= minute <= 59:
+            raise ValueError("time is outside 00:00..23:59")
+        cfg[profile + "_backup"]["hour"] = hour
+        cfg[profile + "_backup"]["minute"] = minute
+    elif suffix == "full_weekday":
+        names = {"понедельник": 1, "вторник": 2, "среда": 3, "четверг": 4,
+                 "пятница": 5, "суббота": 6, "воскресенье": 7,
+                 "mon": 1, "tue": 2, "wed": 3, "thu": 4,
+                 "fri": 5, "sat": 6, "sun": 7}
+        value = payload.strip().lower()
+        weekday = names.get(value, int(value) if value.isdigit() else 0)
+        if not 1 <= weekday <= 7:
+            raise ValueError("weekday must be Monday..Sunday or 1..7")
+        cfg["full_backup"]["weekday"] = weekday
     else:
         profile, separator, key = suffix.partition("_")
         if profile not in ("config", "full") or not separator:

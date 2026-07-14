@@ -3,6 +3,8 @@ import json
 import pathlib
 
 cfg = json.loads(pathlib.Path("/etc/wb-backup/config.json").read_text(encoding="utf-8"))
+cfg.setdefault("config_backup", {}).setdefault("enabled", True)
+cfg.setdefault("full_backup", {}).setdefault("enabled", True)
 days = {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat", 7: "Sun"}
 
 config = cfg["config_backup"]

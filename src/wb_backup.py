@@ -53,8 +53,8 @@ def config():
     if missing:
         raise RuntimeError("missing settings: " + ", ".join(missing))
     defaults = {
-        "config_backup": {"hour": 3, "minute": 30, "keep_count": 14},
-        "full_backup": {"weekday": 7, "hour": 4, "minute": 30, "keep_count": 4},
+        "config_backup": {"enabled": True, "hour": 3, "minute": 30, "keep_count": 14},
+        "full_backup": {"enabled": True, "weekday": 7, "hour": 4, "minute": 30, "keep_count": 4},
     }
     for profile, values in defaults.items():
         current = cfg.setdefault(profile, {})
@@ -84,7 +84,6 @@ def mqtt_publish(cfg, suffix, payload, retain=True):
 def publish_state(cfg, **changes):
     state = load_json(STATE)
     state.update(changes)
-    state["enabled"] = bool(cfg.get("enabled", True))
     for profile in ("config", "full"):
         settings = cfg[profile + "_backup"]
         for key, value in settings.items():
