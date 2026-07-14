@@ -190,12 +190,16 @@ def backup(profile):
                           last_result="success", last_profile=profile,
                           **{f"last_{profile}": finished.isoformat(),
                              f"last_{profile}_file": final.name,
-                             f"last_{profile}_size": final.stat().st_size},
+                             f"last_{profile}_size": final.stat().st_size,
+                             f"last_{profile}_result": "success",
+                             f"last_{profile}_error": ""},
                           duration_seconds=round((finished - started).total_seconds(), 1), error="")
             return 0
         except Exception as exc:
             publish_state(cfg, status="error", running_profile="", last_result="error",
-                          last_profile=profile, error=str(exc))
+                          last_profile=profile, error=str(exc),
+                          **{f"last_{profile}_result": "error",
+                             f"last_{profile}_error": str(exc)})
             raise
 
 

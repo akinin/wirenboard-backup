@@ -51,6 +51,10 @@ def discovery(cfg):
         ("sensor", "status"): {"name": "Статус", "state_topic": state, "value_template": "{{ value_json.status }}", "json_attributes_topic": state, "icon": "mdi:cloud-upload"},
         ("sensor", "last_config"): {"name": "Последний бэкап конфигураций", "state_topic": state, "value_template": "{{ value_json.last_config | default('unknown') }}", "device_class": "timestamp"},
         ("sensor", "last_full"): {"name": "Последний полный бэкап", "state_topic": state, "value_template": "{{ value_json.last_full | default('unknown') }}", "device_class": "timestamp"},
+        ("sensor", "config_file"): {"name": "Конфигурации: последний файл", "state_topic": state, "value_template": "{{ value_json.last_config_file | default('—') }}", "icon": "mdi:file-cog"},
+        ("sensor", "full_file"): {"name": "Полный: последний файл", "state_topic": state, "value_template": "{{ value_json.last_full_file | default('—') }}", "icon": "mdi:archive"},
+        ("sensor", "config_result"): {"name": "Конфигурации: результат", "state_topic": state, "value_template": "{{ value_json.last_config_result | default('unknown') }}", "icon": "mdi:check-circle-outline"},
+        ("sensor", "full_result"): {"name": "Полный: результат", "state_topic": state, "value_template": "{{ value_json.last_full_result | default('unknown') }}", "icon": "mdi:check-circle-outline"},
         ("binary_sensor", "problem"): {"name": "Ошибка резервного копирования", "state_topic": state, "value_template": "{{ 'ON' if value_json.status == 'error' else 'OFF' }}", "payload_on": "ON", "payload_off": "OFF", "device_class": "problem"},
     }
     numbers = {
