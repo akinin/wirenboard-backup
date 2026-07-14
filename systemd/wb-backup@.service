@@ -1,0 +1,11 @@
+[Unit]
+Description=Wiren Board %i backup to NFS
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/wirenboard-backup/bin/wb-backup run %i
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

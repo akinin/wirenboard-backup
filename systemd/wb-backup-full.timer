@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly full Wiren Board backup
+
+[Timer]
+OnCalendar=Sun *-*-* 04:30:00
+Persistent=true
+Unit=wb-backup@full.service
+
+[Install]
+WantedBy=timers.target

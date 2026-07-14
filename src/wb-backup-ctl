@@ -1,0 +1,31 @@
+#!/bin/sh
+set -eu
+
+case "${1:-status}" in
+  run-config)
+    systemctl start wb-backup@config.service
+    ;;
+  run-full)
+    systemctl start wb-backup@full.service
+    ;;
+  status)
+    /opt/wirenboard-backup/bin/wb-backup status
+    systemctl --no-pager status wb-backup-config.timer wb-backup-full.timer wb-backup-mqtt.service || true
+    ;;
+  apply)
+    python3 /opt/wirenboard-backup/lib/write-timers.py
+    systemctl daemon-reload
+    enabled="$(python3 -c 'import json; print("yes" if json.load(open("/etc/wb-backup/config.json")).get("enabled", True) else "no")')"
+    if [ "$enabled" = yes ]; then
+      systemctl enable --now wb-backup-config.timer wb-backup-full.timer
+      systemctl restart wb-backup-config.timer wb-backup-full.timer
+    else
+      systemctl disable --now wb-backup-config.timer wb-backup-full.timer
+    fi
+    /opt/wirenboard-backup/bin/wb-backup publish || true
+    ;;
+  *)
+    echo "Usage: wb-backup-ctl {run-config|run-full|status|apply}" >&2
+    exit 2
+    ;;
+esac

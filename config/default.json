@@ -1,0 +1,23 @@
+{
+  "enabled": true,
+  "nfs_server": "10.10.100.11",
+  "nfs_export": "/volume1/Backups",
+  "nfs_options": "rw,hard,timeo=50,retrans=2,_netdev",
+  "mount_point": "/mnt/wb-backup-nas",
+  "destination": "WirenBoard",
+  "config_backup": {
+    "hour": 3,
+    "minute": 30,
+    "keep_count": 14
+  },
+  "full_backup": {
+    "weekday": 7,
+    "hour": 4,
+    "minute": 30,
+    "keep_count": 4
+  },
+  "mqtt_host": "127.0.0.1",
+  "mqtt_port": 1883,
+  "mqtt_prefix": "/wirenboard/backup",
+  "ha_discovery_prefix": "homeassistant"
+}

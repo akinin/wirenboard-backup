@@ -1,0 +1,13 @@
+[Unit]
+Description=Wiren Board backup MQTT and Home Assistant bridge
+After=mosquitto.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/wirenboard-backup/bin/wb-backup-mqtt
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
