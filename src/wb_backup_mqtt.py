@@ -11,6 +11,12 @@ def load():
     cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
     cfg.setdefault("config_backup", {}).setdefault("enabled", True)
     cfg.setdefault("full_backup", {}).setdefault("enabled", True)
+    cfg["config_backup"].setdefault("frequency", "daily")
+    cfg["config_backup"].setdefault("weekday", 1)
+    cfg["config_backup"].setdefault("monthday", 1)
+    cfg["full_backup"].setdefault("frequency", "weekly")
+    cfg["full_backup"].setdefault("weekday", 7)
+    cfg["full_backup"].setdefault("monthday", 1)
     return cfg
 
 
@@ -58,6 +64,33 @@ def handle(cfg, topic, payload):
     if suffix in ("config_enabled", "full_enabled"):
         profile = suffix.split("_", 1)[0]
         cfg[profile + "_backup"]["enabled"] = payload.strip().upper() in ("ON", "1", "TRUE")
+    elif suffix in ("config_frequency", "full_frequency"):
+        profile = suffix.split("_", 1)[0]
+        frequencies = {"ежедневно": "daily", "daily": "daily",
+                       "еженедельно": "weekly", "weekly": "weekly",
+                       "ежемесячно": "monthly", "monthly": "monthly"}
+        frequency = frequencies.get(payload.strip().lower())
+        if not frequency:
+            raise ValueError("frequency must be daily, weekly or monthly")
+        cfg[profile + "_backup"]["frequency"] = frequency
+    elif suffix in ("config_day", "full_day"):
+        profile = suffix.split("_", 1)[0]
+        settings = cfg[profile + "_backup"]
+        value = payload.strip().lower()
+        if settings.get("frequency") == "weekly":
+            names = {"понедельник": 1, "вторник": 2, "среда": 3, "четверг": 4,
+                     "пятница": 5, "суббота": 6, "воскресенье": 7,
+                     "mon": 1, "tue": 2, "wed": 3, "thu": 4,
+                     "fri": 5, "sat": 6, "sun": 7}
+            weekday = names.get(value, int(value) if value.isdigit() else 0)
+            if not 1 <= weekday <= 7:
+                raise ValueError("weekday must be Monday..Sunday or 1..7")
+            settings["weekday"] = weekday
+        elif settings.get("frequency") == "monthly":
+            monthday = int(value) if value.isdigit() else 0
+            if not 1 <= monthday <= 28:
+                raise ValueError("month day must be 1..28")
+            settings["monthday"] = monthday
     elif suffix in ("config_schedule", "full_schedule"):
         profile = suffix.split("_", 1)[0]
         parts = payload.strip().split(":")

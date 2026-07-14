@@ -6,13 +6,18 @@
   "destination": "WirenBoard",
   "config_backup": {
     "enabled": true,
+    "frequency": "daily",
+    "weekday": 1,
+    "monthday": 1,
     "hour": 3,
     "minute": 30,
     "keep_count": 14
   },
   "full_backup": {
     "enabled": true,
+    "frequency": "weekly",
     "weekday": 7,
+    "monthday": 1,
     "hour": 4,
     "minute": 30,
     "keep_count": 4

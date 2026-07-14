@@ -9,10 +9,18 @@ days = {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat", 7: "Sun"}
 
 config = cfg["config_backup"]
 full = cfg["full_backup"]
-values = {
-    "wb-backup-config.timer": f"*-*-* {int(config['hour']):02d}:{int(config['minute']):02d}:00",
-    "wb-backup-full.timer": f"{days[int(full['weekday'])]} *-*-* {int(full['hour']):02d}:{int(full['minute']):02d}:00",
-}
+def calendar(settings):
+    clock = f"{int(settings['hour']):02d}:{int(settings['minute']):02d}:00"
+    frequency = settings.get("frequency", "daily")
+    if frequency == "weekly":
+        return f"{days[int(settings.get('weekday', 1))]} *-*-* {clock}"
+    if frequency == "monthly":
+        return f"*-*-{int(settings.get('monthday', 1)):02d} {clock}"
+    return f"*-*-* {clock}"
+
+
+values = {"wb-backup-config.timer": calendar(config),
+          "wb-backup-full.timer": calendar(full)}
 for unit, schedule in values.items():
     directory = pathlib.Path("/etc/systemd/system") / (unit + ".d")
     directory.mkdir(parents=True, exist_ok=True)

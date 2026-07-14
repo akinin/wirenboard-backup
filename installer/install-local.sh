@@ -33,7 +33,7 @@ install -m 644 "$ROOT/wb-rules/wb-backup.js" /etc/wb-rules/wb-backup.js
 if [ ! -f /etc/wb-backup/config.json ] || ! grep -q 'config_backup' /etc/wb-backup/config.json; then
   install -m 600 "$ROOT/config/default.json" /etc/wb-backup/config.json
 fi
-python3 -c 'import json; p="/etc/wb-backup/config.json"; c=json.load(open(p)); c.setdefault("config_backup",{}).setdefault("enabled",True); c.setdefault("full_backup",{}).setdefault("enabled",True); c.pop("enabled",None); open(p,"w").write(json.dumps(c,ensure_ascii=False,indent=2)+"\n")'
+python3 -c 'import json; p="/etc/wb-backup/config.json"; c=json.load(open(p)); a=c.setdefault("config_backup",{}); b=c.setdefault("full_backup",{}); a.setdefault("enabled",True); a.setdefault("frequency","daily"); a.setdefault("weekday",1); a.setdefault("monthday",1); b.setdefault("enabled",True); b.setdefault("frequency","weekly"); b.setdefault("weekday",7); b.setdefault("monthday",1); c.pop("enabled",None); open(p,"w").write(json.dumps(c,ensure_ascii=False,indent=2)+"\n")'
 
 install -m 644 "$ROOT/systemd/wb-backup@.service" /etc/systemd/system/wb-backup@.service
 install -m 644 "$ROOT/systemd/wb-backup-config.timer" /etc/systemd/system/wb-backup-config.timer

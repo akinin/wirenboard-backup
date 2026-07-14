@@ -53,8 +53,10 @@ def config():
     if missing:
         raise RuntimeError("missing settings: " + ", ".join(missing))
     defaults = {
-        "config_backup": {"enabled": True, "hour": 3, "minute": 30, "keep_count": 14},
-        "full_backup": {"enabled": True, "weekday": 7, "hour": 4, "minute": 30, "keep_count": 4},
+        "config_backup": {"enabled": True, "frequency": "daily", "weekday": 1,
+                          "monthday": 1, "hour": 3, "minute": 30, "keep_count": 14},
+        "full_backup": {"enabled": True, "frequency": "weekly", "weekday": 7,
+                        "monthday": 1, "hour": 4, "minute": 30, "keep_count": 4},
     }
     for profile, values in defaults.items():
         current = cfg.setdefault(profile, {})
@@ -63,7 +65,11 @@ def config():
         current["hour"] = bounded(current["hour"], 0, 23)
         current["minute"] = bounded(current["minute"], 0, 59)
         current["keep_count"] = bounded(current["keep_count"], 1, 365)
-    cfg["full_backup"]["weekday"] = bounded(cfg["full_backup"]["weekday"], 1, 7)
+    for profile in ("config_backup", "full_backup"):
+        if cfg[profile]["frequency"] not in ("daily", "weekly", "monthly"):
+            cfg[profile]["frequency"] = defaults[profile]["frequency"]
+        cfg[profile]["weekday"] = bounded(cfg[profile]["weekday"], 1, 7)
+        cfg[profile]["monthday"] = bounded(cfg[profile]["monthday"], 1, 28)
     return cfg
 
 
