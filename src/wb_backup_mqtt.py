@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import json
 import pathlib
-import socket
 import subprocess
 import sys
 
@@ -27,53 +26,24 @@ def publish(cfg, topic, payload, retain=True):
     subprocess.run(command, check=False)
 
 
-def base_entity(prefix, device, unique_id):
-    return {"unique_id": unique_id, "device": device,
-            "availability": [{"topic": prefix + "/availability"}]}
-
-
-def discovery(cfg):
-    prefix = cfg.get("mqtt_prefix", "/wirenboard/backup").rstrip("/")
+def cleanup_home_assistant_discovery(cfg):
     discovery_prefix = cfg.get("ha_discovery_prefix", "homeassistant").rstrip("/")
-    host = socket.gethostname().split(".")[0]
+    host = subprocess.run(["hostname", "-s"], check=True, text=True,
+                          stdout=subprocess.PIPE).stdout.strip()
     device_id = f"wb_backup_{host}"
-    device = {"identifiers": [device_id], "name": f"Wiren Board Backup {host}",
-              "manufacturer": "Wiren Board community", "model": "NFS Backup"}
-    legacy = (("button", "run"), ("number", "keep_count"), ("number", "hour"),
-              ("number", "minute"), ("sensor", "last_backup"))
-    for component, ident in legacy:
-        publish(cfg, f"{discovery_prefix}/{component}/{device_id}/{ident}/config", "")
-    state = prefix + "/state"
     entities = {
-        ("button", "run_config"): {"name": "Запустить бэкап конфигураций", "command_topic": prefix + "/command/run_config", "payload_press": "run", "icon": "mdi:file-cog"},
-        ("button", "run_full"): {"name": "Запустить полный бэкап", "command_topic": prefix + "/command/run_full", "payload_press": "run", "icon": "mdi:backup-restore"},
-        ("switch", "enabled"): {"name": "Расписание включено", "command_topic": prefix + "/command/enabled", "state_topic": state, "value_template": "{{ 'ON' if value_json.enabled else 'OFF' }}", "payload_on": "ON", "payload_off": "OFF"},
-        ("sensor", "status"): {"name": "Статус", "state_topic": state, "value_template": "{{ value_json.status }}", "json_attributes_topic": state, "icon": "mdi:cloud-upload"},
-        ("sensor", "last_config"): {"name": "Последний бэкап конфигураций", "state_topic": state, "value_template": "{{ value_json.last_config | default('unknown') }}", "device_class": "timestamp"},
-        ("sensor", "last_full"): {"name": "Последний полный бэкап", "state_topic": state, "value_template": "{{ value_json.last_full | default('unknown') }}", "device_class": "timestamp"},
-        ("sensor", "config_file"): {"name": "Конфигурации: последний файл", "state_topic": state, "value_template": "{{ value_json.last_config_file | default('—') }}", "icon": "mdi:file-cog"},
-        ("sensor", "full_file"): {"name": "Полный: последний файл", "state_topic": state, "value_template": "{{ value_json.last_full_file | default('—') }}", "icon": "mdi:archive"},
-        ("sensor", "config_result"): {"name": "Конфигурации: результат", "state_topic": state, "value_template": "{{ value_json.last_config_result | default('unknown') }}", "icon": "mdi:check-circle-outline"},
-        ("sensor", "full_result"): {"name": "Полный: результат", "state_topic": state, "value_template": "{{ value_json.last_full_result | default('unknown') }}", "icon": "mdi:check-circle-outline"},
-        ("binary_sensor", "problem"): {"name": "Ошибка резервного копирования", "state_topic": state, "value_template": "{{ 'ON' if value_json.status == 'error' else 'OFF' }}", "payload_on": "ON", "payload_off": "OFF", "device_class": "problem"},
+        "button": ("run", "run_config", "run_full"),
+        "switch": ("enabled",),
+        "sensor": ("status", "last_backup", "last_config", "last_full",
+                   "config_file", "full_file", "config_result", "full_result"),
+        "binary_sensor": ("problem",),
+        "number": ("keep_count", "hour", "minute", "config_keep_count",
+                   "config_hour", "config_minute", "full_keep_count",
+                   "full_weekday", "full_hour", "full_minute"),
     }
-    numbers = {
-        "config_keep_count": ("Конфигурации: количество копий", 1, 365),
-        "config_hour": ("Конфигурации: час", 0, 23),
-        "config_minute": ("Конфигурации: минута", 0, 59),
-        "full_keep_count": ("Полные: количество копий", 1, 52),
-        "full_weekday": ("Полные: день недели (1=Пн, 7=Вс)", 1, 7),
-        "full_hour": ("Полные: час", 0, 23),
-        "full_minute": ("Полные: минута", 0, 59),
-    }
-    for ident, (name, low, high) in numbers.items():
-        entities[("number", ident)] = {"name": name, "command_topic": prefix + "/command/" + ident,
-                                        "state_topic": state, "value_template": "{{ value_json." + ident + " }}",
-                                        "min": low, "max": high, "step": 1, "mode": "box"}
-    for (component, ident), data in entities.items():
-        data.update(base_entity(prefix, device, f"{device_id}_{ident}"))
-        topic = f"{discovery_prefix}/{component}/{device_id}/{ident}/config"
-        publish(cfg, topic, json.dumps(data, ensure_ascii=False, separators=(",", ":")))
+    for component, identifiers in entities.items():
+        for ident in identifiers:
+            publish(cfg, f"{discovery_prefix}/{component}/{device_id}/{ident}/config", "")
 
 
 def handle(cfg, topic, payload):
@@ -103,7 +73,7 @@ def main():
     cfg = load()
     prefix = cfg.get("mqtt_prefix", "/wirenboard/backup").rstrip("/")
     publish(cfg, prefix + "/availability", "online")
-    discovery(cfg)
+    cleanup_home_assistant_discovery(cfg)
     subprocess.run(["/opt/wirenboard-backup/bin/wb-backup", "publish"], check=False)
     command = ["mosquitto_sub", "-h", str(cfg.get("mqtt_host", "127.0.0.1")),
                "-p", str(cfg.get("mqtt_port", 1883)), "-t", prefix + "/command/+", "-v"]
