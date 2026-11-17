@@ -2,14 +2,18 @@
 import argparse
 import datetime as dt
 import fcntl
+import gzip
 import json
 import os
 import pathlib
+import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
 import tempfile
+import tarfile
 import time
 
 CONFIG = pathlib.Path("/etc/wb-backup/config.json")
@@ -19,6 +23,11 @@ NATIVE_SCRIPTS = {
     "config": pathlib.Path("/usr/lib/cgi-bin/download_configs.sh"),
     "full": pathlib.Path("/usr/lib/cgi-bin/download_everything.sh"),
 }
+NATIVE_BACKUP = pathlib.Path("/usr/lib/cgi-bin/download_backup.sh")
+OPTIONAL_CONFIG_PATHS = (
+    pathlib.Path("/mnt/data/root/zigbee2mqtt/data"),
+    pathlib.Path("/mnt/data/makesimple/.SprutHub"),
+)
 
 
 def load_json(path, default=None):
@@ -139,23 +148,92 @@ def strip_cgi_headers(source, destination):
     shutil.copyfileobj(source, destination)
 
 
-def create_archive(profile, target):
+def archive_command(profile, environment):
     script = NATIVE_SCRIPTS[profile]
-    if not script.is_file() or not os.access(script, os.X_OK):
-        raise RuntimeError(f"native backup script is unavailable: {script}")
+    if script.is_file() and os.access(script, os.X_OK):
+        return [str(script)]
+    if not NATIVE_BACKUP.is_file() or not os.access(NATIVE_BACKUP, os.X_OK):
+        raise RuntimeError(f"native backup scripts are unavailable: {script}, {NATIVE_BACKUP}")
+    environment["WB_BACKUP_TYPE"] = {"config": "configs", "full": "everything"}[profile]
+    if profile == "config" and not all(path.exists() for path in OPTIONAL_CONFIG_PATHS):
+        # wb-configs 3.55 lists these optional applications unconditionally.
+        # Keep its configuration archive layout, omitting uninstalled apps.
+        return ["tar", "--use-compress-program=pigz", "--exclude=/var/tmp", "--exclude=/var/log",
+                "--exclude=/mnt/data/root/zigbee2mqtt/data/log", "--create", "--file", "-", "--",
+                "/etc", "/mnt/data/etc", "/var",
+                *(str(path) for path in OPTIONAL_CONFIG_PATHS if path.exists())]
+    return [str(NATIVE_BACKUP)]
+
+
+def validate_archive(target):
+    with gzip.open(target, "rb") as stream:
+        with tarfile.open(fileobj=stream, mode="r|") as archive:
+            has_files = False
+            for member in archive:
+                has_files = has_files or member.isfile()
+            if not has_files:
+                raise RuntimeError("backup archive contains no regular files")
+        # Consume padding and the gzip trailer to verify its CRC and length.
+        while stream.read(1024 * 1024):
+            pass
+
+
+def only_live_logs_changed(code, diagnostics):
+    if code != 1:
+        return False
+    diagnostics.seek(0)
+    changed = False
+    for line in diagnostics:
+        prefix, separator, message = line.decode("utf-8", "replace").strip().partition(": ")
+        if not separator or prefix not in ("tar", "/usr/bin/tar"):
+            return False
+        if message in ("Removing leading `/' from member names", "Removing leading `/' from hard link targets"):
+            continue
+        if re.fullmatch(r"(?:/var/log|/mnt/data/var/log)/.+: file changed as we read it", message):
+            changed = True
+            continue
+        return False
+    return changed
+
+
+def create_archive(profile, target):
     environment = os.environ.copy()
     environment.setdefault("MOUNT_DIR", "/")
-    process = subprocess.Popen([str(script)], stdout=subprocess.PIPE,
-                               stderr=subprocess.PIPE, env=environment)
-    assert process.stdout is not None
-    with open(target, "wb") as out:
-        strip_cgi_headers(process.stdout, out)
-    stderr = process.stderr.read().decode("utf-8", "replace") if process.stderr else ""
-    code = process.wait()
-    if code:
+    environment["LC_ALL"] = "C"
+    environment.pop("TAR_OPTIONS", None)
+    command = archive_command(profile, environment)
+    with tempfile.TemporaryFile() as diagnostics:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=diagnostics,
+                                   env=environment, start_new_session=True)
+        try:
+            assert process.stdout is not None
+            fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "wb") as out:
+                # Synology NFS may initially apply its inherited ACL mode.
+                os.fchmod(out.fileno(), 0o600)
+                strip_cgi_headers(process.stdout, out)
+            code = process.wait()
+        except BaseException:
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGTERM)
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait()
+            raise
+        finally:
+            if process.stdout is not None:
+                process.stdout.close()
+        live_logs_changed = only_live_logs_changed(code, diagnostics)
+        diagnostics.seek(0)
+        stderr = diagnostics.read(8192).decode("utf-8", "replace")
+    if code and not live_logs_changed:
         raise RuntimeError(f"native {profile} backup failed ({code}): {stderr.strip()}")
     if target.stat().st_size < 1024:
         raise RuntimeError("native backup archive is unexpectedly small")
+    validate_archive(target)
+    return "Live log files changed during backup; archive integrity verified" if live_logs_changed else ""
 
 
 def rotate(directory, profile, keep_count):
@@ -185,7 +263,7 @@ def backup(profile):
             final = destination / f"wb-{profile}-{stamp}.tar.gz"
             partial = destination / (final.name + ".partial")
             try:
-                create_archive(profile, partial)
+                warning = create_archive(profile, partial)
                 os.replace(partial, final)
             finally:
                 partial.unlink(missing_ok=True)
@@ -197,8 +275,12 @@ def backup(profile):
                              f"last_{profile}_file": final.name,
                              f"last_{profile}_size": final.stat().st_size,
                              f"last_{profile}_result": "success",
-                             f"last_{profile}_error": ""},
+                             f"last_{profile}_error": "",
+                             f"last_{profile}_warning": warning},
+                          warning=warning,
                           duration_seconds=round((finished - started).total_seconds(), 1), error="")
+            if warning:
+                print(f"wb-backup: warning: {warning}", file=sys.stderr)
             return 0
         except Exception as exc:
             publish_state(cfg, status="error", running_profile="", last_result="error",

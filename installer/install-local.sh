@@ -17,8 +17,12 @@ fi
 for tool in python3 mosquitto_pub mosquitto_sub mount systemctl curl; do
   command -v "$tool" >/dev/null 2>&1 || { echo "Required command not found: $tool" >&2; exit 1; }
 done
-test -x /usr/lib/cgi-bin/download_configs.sh || { echo "Native configuration backup script not found" >&2; exit 1; }
-test -x /usr/lib/cgi-bin/download_everything.sh || { echo "Native full backup script not found" >&2; exit 1; }
+if [ -x /usr/lib/cgi-bin/download_backup.sh ]; then
+  command -v pigz >/dev/null 2>&1 || { echo "Required command not found: pigz" >&2; exit 1; }
+else
+  test -x /usr/lib/cgi-bin/download_configs.sh || { echo "Native configuration backup script not found" >&2; exit 1; }
+  test -x /usr/lib/cgi-bin/download_everything.sh || { echo "Native full backup script not found" >&2; exit 1; }
+fi
 
 systemctl disable --now wb-backup.timer 2>/dev/null || true
 systemctl stop wb-backup-mqtt.service 2>/dev/null || true
