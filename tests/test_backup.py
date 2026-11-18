@@ -104,6 +104,31 @@ class BackupTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'failed \\(1\\)'):
                 backup.create_archive('config', self.root / 'backup.partial')
 
+    def test_changed_serial_log_is_accepted_only_for_a_valid_archive(self):
+        for prefix in ('', '/mnt/data'):
+            diagnostic = f'tar: {prefix}/var/lib/wb-mqtt-serial/log.0000001619: file changed as we read it\n'
+            corrupt = bytearray(self.archive)
+            corrupt[-8] ^= 1
+            for valid, data in ((True, self.archive), (False, bytes(corrupt))):
+                with self.subTest(prefix=prefix, valid=valid):
+                    script = self.script(
+                        'import base64,sys\n'
+                        f'sys.stderr.write({diagnostic!r})\n'
+                        f'sys.stdout.buffer.write(base64.b64decode({base64.b64encode(data)!r}))\n'
+                        'sys.exit(1)\n'
+                    )
+                    target = self.root / f'backup-{bool(prefix)}-{valid}.partial'
+                    with mock.patch.dict(backup.NATIVE_SCRIPTS, {'config': script}):
+                        if valid:
+                            self.assertIn('Live log files changed', backup.create_archive('config', target))
+                        else:
+                            with self.assertRaises((OSError, EOFError)):
+                                backup.create_archive('config', target)
+
+    def test_other_serial_state_file_changes_are_rejected(self):
+        with io.BytesIO(b'tar: /var/lib/wb-mqtt-serial/state.json: file changed as we read it\n') as stream:
+            self.assertFalse(backup.only_live_logs_changed(1, stream))
+
     def test_real_error_after_long_log_is_rejected(self):
         diagnostics = ("tar: /var/log/system.log: file changed as we read it\n" * 1000
                        + "tar: /etc/important.conf: Permission denied\n")

@@ -189,7 +189,11 @@ def only_live_logs_changed(code, diagnostics):
             return False
         if message in ("Removing leading `/' from member names", "Removing leading `/' from hard link targets"):
             continue
-        if re.fullmatch(r"(?:/var/log|/mnt/data/var/log)/.+: file changed as we read it", message):
+        if re.fullmatch(
+            r"(?:/(?:mnt/data/)?var/log/.+|/(?:mnt/data/)?var/lib/wb-mqtt-serial/log\.[0-9]+)"
+            r": file changed as we read it",
+            message,
+        ):
             changed = True
             continue
         return False
